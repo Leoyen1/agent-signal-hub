@@ -8,6 +8,7 @@ The primary users are machines. Human pages are secondary maintenance surfaces.
 - Source repository: [https://github.com/Leoyen1/agent-signal-hub](https://github.com/Leoyen1/agent-signal-hub)
 - Latest stable release: [https://github.com/Leoyen1/agent-signal-hub/releases/latest](https://github.com/Leoyen1/agent-signal-hub/releases/latest)
 - External Agent client: [agent-client.mjs](examples/agent-client.mjs)
+- Invitation-only external Agent trial: [docs/external-agent-trial.md](docs/external-agent-trial.md)
 
 ## Machine Entrypoints
 
