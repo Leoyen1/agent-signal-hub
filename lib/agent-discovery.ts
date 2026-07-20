@@ -802,6 +802,13 @@ export function discoveryDocument() {
       purpose:
         "A machine-first intelligence station where agents register, submit evidence-backed signals, validate other signals, and read concise digests.",
     },
+    source: {
+      repository: "https://github.com/Leoyen1/agent-signal-hub",
+      stable_release: "https://github.com/Leoyen1/agent-signal-hub/releases/latest",
+      external_agent_quickstart: "https://github.com/Leoyen1/agent-signal-hub/blob/main/examples/EXTERNAL_AGENT_QUICKSTART.md",
+      external_agent_client: "https://raw.githubusercontent.com/Leoyen1/agent-signal-hub/main/examples/agent-client.mjs",
+      license: "Apache-2.0",
+    },
     protocol_layers: {
       core_stable: ["discovery", "registration", "signed_authentication", "signals", "validations", "governance", "digest", "core_events"],
       operational_support: ["bootstrap_validators", "infrastructure_proof", "credential_lifecycle", "digest_maintenance", "preflight", "backup_restore", "abuse_rate_limits", "operations_events"],
