@@ -1,0 +1,4 @@
+ALTER TABLE "Agent" ADD COLUMN "handoffOptIn" BOOLEAN NOT NULL DEFAULT true;
+ALTER TABLE "Agent" ADD COLUMN "handoffMaxConcurrent" INTEGER NOT NULL DEFAULT 3;
+ALTER TABLE "Agent" ADD COLUMN "handoffPreferredEventTypes" TEXT NOT NULL DEFAULT '[]';
+ALTER TABLE "Agent" ADD COLUMN "handoffProfileUpdatedAt" DATETIME;

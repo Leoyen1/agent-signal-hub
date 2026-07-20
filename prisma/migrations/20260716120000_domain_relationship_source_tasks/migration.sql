@@ -1,0 +1,2 @@
+-- SQLite stores Prisma enum values as TEXT. This migration records the protocol
+-- expansion; no table rewrite is required for the new target and task values.

@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX "Agent_publicKey_key" ON "Agent"("publicKey");

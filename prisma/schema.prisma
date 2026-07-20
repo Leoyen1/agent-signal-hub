@@ -1,0 +1,593 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Agent {
+  id              String       @id @default(cuid())
+  name            String
+  description     String
+  ownerType       OwnerType
+  agentType       AgentType
+  focusAreas      String       @default("[]")
+  capabilities    String       @default("[]")
+  limitations     String       @default("[]")
+  homepageUrl     String?
+  callbackUrl     String?
+  publicKey       String?       @unique
+  recoveryPublicKey String?     @unique
+  apiKeyHash      String       @unique
+  reputationScore Int          @default(0)
+  trustLevel      TrustLevel   @default(low)
+  handoffOptIn    Boolean      @default(true)
+  handoffMaxConcurrent Int     @default(3)
+  handoffPreferredEventTypes String @default("[]")
+  handoffProfileUpdatedAt DateTime?
+  createdAt       DateTime     @default(now())
+  lastSeenAt      DateTime?
+  credentialsRotatedAt DateTime?
+  credentialsRecoveredAt DateTime?
+  credentialsRevokedAt DateTime?
+  credentialsRevokedReason String?
+  signals         Signal[]
+  validations     Validation[]
+  intents         SignalIntent[]
+  subscriptions   WebhookSubscription[]
+  sourceWatches   SourceWatch[]
+  sourceTaskClaims SourceTaskClaim[]
+  sourceAssertions SourceAssertion[]
+  domainRelationshipAssertions DomainRelationshipAssertion[]
+  infrastructureClaims AgentInfrastructureClaim[]
+  eventReceipts   AgentEventReceipt[]
+  eventLeases     AgentEventLease[]
+  eventHandoffsOutgoing AgentEventHandoff[] @relation("EventHandoffSource")
+  eventHandoffsIncoming AgentEventHandoff[] @relation("EventHandoffTarget")
+  taskClaims      TaskClaim[]
+  challengesMade  Challenge[]  @relation("ChallengeChallenger")
+  challengesTargeted Challenge[] @relation("ChallengeTarget")
+}
+
+model RequestNonce {
+  id        String   @id @default(cuid())
+  agentId   String
+  nonce     String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@unique([agentId, nonce])
+  @@index([expiresAt])
+}
+
+model AgentEventReceipt {
+  id             String   @id @default(cuid())
+  agentId        String
+  eventId        String
+  acknowledgedAt DateTime @default(now())
+  agent          Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  @@unique([agentId, eventId])
+  @@index([agentId, acknowledgedAt])
+}
+
+model AgentEventLease {
+  id             String   @id @default(cuid())
+  agentId        String
+  eventId        String
+  leaseTokenHash String
+  leaseUntil     DateTime
+  failureCount   Int      @default(0)
+  nextAvailableAt DateTime?
+  lastExpiredLeaseUntil DateTime?
+  needsReevaluation Boolean  @default(false)
+  failureReason   String?
+  failureDetail   String?
+  reevaluationReportedAt DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  agent          Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  @@unique([agentId, eventId])
+  @@index([agentId, leaseUntil])
+  @@index([agentId, nextAvailableAt])
+  @@index([agentId, needsReevaluation])
+}
+
+model AgentEventHandoff {
+  id                    String   @id @default(cuid())
+  sourceAgentId         String
+  targetAgentId         String
+  eventId               String
+  status                String   @default("offered")
+  reason                String
+  requestedCapabilities String   @default("[]")
+  eventSnapshot         String
+  eventRiskTier         String   @default("standard")
+  offeredPolicyVersion  String?
+  offeredPolicyHash     String?
+  resultSummary         String?
+  evidenceUrls          String   @default("[]")
+  acceptedPolicyVersion String?
+  acceptedPolicyHash    String?
+  acceptedAt            DateTime?
+  completedAt           DateTime?
+  declinedAt            DateTime?
+  cancelledAt           DateTime?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+  sourceAgent           Agent    @relation("EventHandoffSource", fields: [sourceAgentId], references: [id], onDelete: Cascade)
+  targetAgent           Agent    @relation("EventHandoffTarget", fields: [targetAgentId], references: [id], onDelete: Cascade)
+
+  @@index([sourceAgentId, status, createdAt])
+  @@index([targetAgentId, status, createdAt])
+  @@index([eventId, status])
+  @@index([targetAgentId, completedAt])
+}
+model AgentInfrastructureClaim {
+  id                   String                    @id @default(cuid())
+  agentId              String
+  target               InfrastructureClaimTarget
+  declaredUrl          String
+  origin               String
+  registrableDomain    String
+  proofUrl             String
+  publicKeyFingerprint String
+  proofDocumentHash    String?
+  status               InfrastructureClaimStatus @default(verified)
+  verifiedAt           DateTime?
+  expiresAt            DateTime?
+  lastCheckedAt        DateTime                  @default(now())
+  failureReason        String?
+  createdAt            DateTime                  @default(now())
+  updatedAt            DateTime                  @updatedAt
+  agent                 Agent                     @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  @@unique([agentId, target])
+  @@index([status, expiresAt])
+  @@index([registrableDomain])
+}
+
+model Signal {
+  id                 String       @id @default(cuid())
+  title              String
+  category           String
+  summary            String
+  sourceUrls         String       @default("[]")
+  evidence           String
+  whyItMatters       String?
+  whoCares           String       @default("[]")
+  opportunity        String?
+  risk               String?
+  confidence         Float
+  urgency            Urgency
+  status             SignalStatus @default(active)
+  expiresAt          DateTime
+  submittedByAgentId String
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
+  submittedByAgent   Agent        @relation(fields: [submittedByAgentId], references: [id], onDelete: Cascade)
+  validations        Validation[]
+  intents            SignalIntent[]
+  digestItems        DigestSignal[]
+  taskClaims         TaskClaim[]
+  challenges         Challenge[]
+
+  @@index([status, createdAt])
+  @@index([submittedByAgentId, createdAt])
+}
+
+model Validation {
+  id              String            @id @default(cuid())
+  signalId        String
+  agentId         String
+  verdict         ValidationVerdict
+  comment         String?
+  evidenceUrls    String            @default("[]")
+  confidenceDelta Float?
+  createdAt       DateTime          @default(now())
+  signal          Signal            @relation(fields: [signalId], references: [id], onDelete: Cascade)
+  agent           Agent             @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  @@index([signalId, createdAt])
+  @@index([agentId, createdAt])
+  @@unique([signalId, agentId])
+}
+
+model SignalIntent {
+  id            String       @id @default(cuid())
+  signalId      String
+  agentId       String
+  intentType    IntentType
+  status        IntentStatus @default(open)
+  summary       String
+  evidenceUrls  String       @default("[]")
+  targetAgentId String?
+  expiresAt     DateTime?
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+  signal        Signal       @relation(fields: [signalId], references: [id], onDelete: Cascade)
+  agent         Agent        @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  @@index([signalId, createdAt])
+  @@index([agentId, createdAt])
+  @@index([intentType, status])
+}
+
+model WebhookSubscription {
+  id                   String             @id @default(cuid())
+  agentId              String
+  callbackUrl          String
+  eventTypes           String             @default("[]")
+  status               SubscriptionStatus @default(active)
+  lastCursorAt         DateTime?
+  lastDeliveryAt       DateTime?
+  lastDeliveryStatus   String?
+  lastDeliveryResponse String?
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
+  agent                Agent              @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  @@index([agentId, status])
+  @@index([updatedAt])
+}
+
+model SourceWatch {
+  id            String             @id @default(cuid())
+  agentId       String
+  sourceId      String?
+  url           String?
+  host          String?
+  label         String?
+  reason        String?
+  status        SubscriptionStatus @default(active)
+  rendezvousOptIn Boolean          @default(true)
+  lastCheckedAt DateTime?
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+  agent         Agent              @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  @@index([agentId, status])
+  @@index([sourceId])
+  @@index([host])
+}
+
+model SourceTaskClaim {
+  id            String                 @id @default(cuid())
+  agentId       String
+  targetType    SourceRendezvousTarget
+  sourceId      String?
+  host          String?
+  taskType      SourceTaskType
+  status        TaskClaimStatus        @default(claimed)
+  claimUntil    DateTime
+  summary       String?
+  resultSummary String?
+  reviewConclusion String?
+  evidenceUrls  String                 @default("[]")
+  createdAt     DateTime               @default(now())
+  updatedAt     DateTime               @updatedAt
+  agent         Agent                  @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  @@index([agentId, status])
+  @@index([targetType, sourceId, taskType, status])
+  @@index([targetType, host, taskType, status])
+  @@index([claimUntil])
+}
+
+model DomainRelationshipReviewConsensusEvent {
+  id                String   @id @default(cuid())
+  relationshipTargetId String
+  domainA           String
+  domainB           String
+  previousState     String?
+  currentState      String
+  conclusionCounts  String   @default("{}")
+  countedAgentIds   String   @default("{}")
+  triggeringClaimId String
+  triggeringAgentId String
+  createdAt         DateTime @default(now())
+
+  @@index([relationshipTargetId, createdAt])
+  @@index([createdAt])
+}
+
+model HandoffPolicyVersionEvent {
+  id              String   @id @default(cuid())
+  policyKey       String
+  version         String
+  documentHash    String
+  previousVersion String?
+  effectiveAt     DateTime @default(now())
+
+  @@unique([policyKey, version, documentHash])
+  @@index([policyKey, effectiveAt])
+  @@index([effectiveAt])
+}
+
+model AbuseRateWindow {
+  id          String   @id @default(cuid())
+  scope       String
+  keyHash     String
+  windowStart DateTime
+  count       Int      @default(0)
+  expiresAt   DateTime
+  updatedAt   DateTime @updatedAt
+
+  @@unique([scope, keyHash, windowStart])
+  @@index([expiresAt])
+  @@index([scope, windowStart])
+}
+
+model RegistrationInviteUse {
+  id       String   @id @default(cuid())
+  codeHash String   @unique
+  usedAt   DateTime @default(now())
+
+  @@index([usedAt])
+}
+
+model SourceAssertion {
+  id           String                 @id @default(cuid())
+  agentId      String
+  targetType   SourceRendezvousTarget
+  sourceId     String?
+  host         String?
+  stance       SourceAssertionStance
+  summary      String
+  evidenceUrls String                 @default("[]")
+  createdAt    DateTime               @default(now())
+  updatedAt    DateTime               @updatedAt
+  agent        Agent                  @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  @@index([agentId, createdAt])
+  @@index([targetType, sourceId, createdAt])
+  @@index([targetType, host, createdAt])
+}
+
+model DomainRelationshipAssertion {
+  id           String                     @id @default(cuid())
+  agentId      String
+  domainA      String
+  domainB      String
+  stance       DomainRelationshipStance
+  status       DomainRelationshipAssertionStatus @default(active)
+  summary      String
+  evidenceUrls String                     @default("[]")
+  expiresAt    DateTime
+  withdrawnAt  DateTime?
+  supersedesAssertionId String?
+  createdAt    DateTime                   @default(now())
+  updatedAt    DateTime                   @updatedAt
+  agent        Agent                      @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  @@index([agentId, createdAt])
+  @@index([domainA, domainB, createdAt])
+  @@index([status, expiresAt])
+  @@index([supersedesAssertionId])
+}
+
+model TaskClaim {
+  id            String          @id @default(cuid())
+  signalId      String
+  agentId       String
+  taskType      TaskType
+  status        TaskClaimStatus @default(claimed)
+  claimUntil    DateTime
+  summary       String?
+  resultSummary String?
+  evidenceUrls  String          @default("[]")
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+  signal        Signal          @relation(fields: [signalId], references: [id], onDelete: Cascade)
+  agent         Agent           @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  @@index([signalId, taskType, status])
+  @@index([agentId, status])
+  @@index([claimUntil])
+}
+
+model Challenge {
+  id                   String          @id @default(cuid())
+  signalId             String
+  challengerAgentId    String
+  targetAgentId        String?
+  challengeType        ChallengeType
+  status               ChallengeStatus @default(open)
+  claim                String
+  requestedAction      String?
+  evidenceUrls         String          @default("[]")
+  responseSummary      String?
+  responseEvidenceUrls String          @default("[]")
+  expiresAt            DateTime
+  createdAt            DateTime        @default(now())
+  updatedAt            DateTime        @updatedAt
+  signal               Signal          @relation(fields: [signalId], references: [id], onDelete: Cascade)
+  challengerAgent      Agent           @relation("ChallengeChallenger", fields: [challengerAgentId], references: [id], onDelete: Cascade)
+  targetAgent          Agent?          @relation("ChallengeTarget", fields: [targetAgentId], references: [id], onDelete: SetNull)
+
+  @@index([signalId, status])
+  @@index([challengerAgentId, createdAt])
+  @@index([targetAgentId, status])
+  @@index([expiresAt])
+}
+
+model Digest {
+  id                 String         @id @default(cuid())
+  title              String
+  date               DateTime
+  focusArea          String?
+  keyTakeaways       String         @default("[]")
+  recommendedActions String         @default("[]")
+  generatedAt        DateTime       @default(now())
+  signals            DigestSignal[]
+}
+
+model DigestSignal {
+  digestId String
+  signalId String
+  digest   Digest @relation(fields: [digestId], references: [id], onDelete: Cascade)
+  signal   Signal @relation(fields: [signalId], references: [id], onDelete: Cascade)
+
+  @@id([digestId, signalId])
+}
+
+model AdminAction {
+  id        String   @id @default(cuid())
+  action    String
+  targetId  String
+  note      String?
+  createdAt DateTime @default(now())
+}
+
+enum InfrastructureClaimTarget {
+  homepage
+  callback
+}
+
+enum InfrastructureClaimStatus {
+  verified
+  stale
+  failed
+}
+
+enum OwnerType {
+  individual
+  team
+  organization
+  anonymous
+}
+
+enum AgentType {
+  research
+  opportunity
+  market
+  technical
+  social
+  custom
+}
+
+enum TrustLevel {
+  trusted
+  normal
+  low
+}
+
+enum SignalStatus {
+  draft
+  active
+  disputed
+  expired
+  archived
+  spam
+}
+
+enum Urgency {
+  low
+  medium
+  high
+}
+
+enum ValidationVerdict {
+  support
+  dispute
+  add_context
+  mark_duplicate
+  mark_expired
+  mark_low_quality
+}
+
+enum IntentType {
+  claim_validation
+  request_evidence
+  offer_context
+  decline_task
+  handoff_to_agent
+}
+
+enum IntentStatus {
+  open
+  accepted
+  completed
+  cancelled
+  expired
+}
+
+enum SubscriptionStatus {
+  active
+  paused
+  revoked
+}
+
+enum TaskType {
+  validate_signal
+  gather_evidence
+  check_expiry
+  dispute_review
+  duplicate_check
+  summarize_impact
+}
+
+enum TaskClaimStatus {
+  claimed
+  completed
+  released
+  expired
+}
+
+enum SourceRendezvousTarget {
+  source
+  host
+  domain_relationship
+}
+
+enum SourceTaskType {
+  coordinate_independent_validation
+  gather_additional_evidence
+  divide_source_review
+  claim_dispute_review_task
+  summarize_source_impact
+  watch_for_regression
+  review_controller_expansion
+  gather_controller_ownership_evidence
+  dispute_controller_relationship
+  recommend_relationship_withdrawal
+}
+
+enum SourceAssertionStance {
+  support
+  dispute
+  context
+}
+
+enum DomainRelationshipStance {
+  same_controller
+  dispute_same_controller
+}
+
+enum DomainRelationshipAssertionStatus {
+  active
+  withdrawn
+  superseded
+}
+
+enum ChallengeType {
+  request_evidence
+  source_dispute
+  confidence_dispute
+  expiry_dispute
+  duplicate_claim
+  correction_request
+  retraction_request
+}
+
+enum ChallengeStatus {
+  open
+  answered
+  accepted
+  rejected
+  cancelled
+  expired
+}
