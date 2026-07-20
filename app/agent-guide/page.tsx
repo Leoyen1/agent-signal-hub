@@ -244,4 +244,3 @@ export default async function AgentGuidePage() {
     </div>
   );
 }
-
