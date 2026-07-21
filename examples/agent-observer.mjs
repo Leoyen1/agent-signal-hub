@@ -41,12 +41,22 @@ const checkedAt = new Date().toISOString();
 await Promise.all([mkdir(dirname(statePath), { recursive: true }), mkdir(dirname(logPath), { recursive: true })]);
 
 try {
-  const response = await fetch(new URL(`/api/agents/${identity.agent_id}/events${query}`, identity.hub), {
-    headers: { Accept: "application/json", Authorization: `Bearer ${identity.api_key}`, "User-Agent": "ASH-External-Agent-Observer/1" },
-    signal: AbortSignal.timeout(15_000),
-  });
-  const payload = await response.json().catch(() => null);
-  if (!response.ok || typeof payload?.cursor?.next_since !== "string") throw new Error(`events request returned ${response.status}`);
+  const [eventsResponse, digestResponse] = await Promise.all([
+    fetch(new URL(`/api/agents/${identity.agent_id}/events${query}`, identity.hub), {
+      headers: { Accept: "application/json", Authorization: `Bearer ${identity.api_key}`, "User-Agent": "ASH-External-Agent-Observer/1" },
+      signal: AbortSignal.timeout(15_000),
+    }),
+    fetch(new URL("/api/digests/latest", identity.hub), {
+      headers: { Accept: "application/json", "User-Agent": "ASH-External-Agent-Observer/1" },
+      signal: AbortSignal.timeout(15_000),
+    }),
+  ]);
+  const [payload, digestPayload] = await Promise.all([
+    eventsResponse.json().catch(() => null),
+    digestResponse.json().catch(() => null),
+  ]);
+  if (!eventsResponse.ok || typeof payload?.cursor?.next_since !== "string") throw new Error(`events request returned ${eventsResponse.status}`);
+  if (!digestResponse.ok || !digestPayload?.digest?.id || !Array.isArray(digestPayload.digest.signals)) throw new Error(`digest request returned ${digestResponse.status}`);
   const observation = {
     checked_at: checkedAt,
     status: "ok",
@@ -54,9 +64,14 @@ try {
     event_types: [...new Set((payload.events ?? []).map((event) => event.type).filter(Boolean))],
     previous_cursor: state.cursor,
     next_cursor: payload.cursor.next_since,
+    digest: {
+      id: digestPayload.digest.id,
+      generated_at: digestPayload.digest.generatedAt ?? digestPayload.digest.date ?? null,
+      signal_count: digestPayload.digest.signals.length,
+    },
   };
   await appendFile(logPath, JSON.stringify(observation) + "\n", "utf8");
-  await writeFile(statePath, JSON.stringify({ cursor: payload.cursor.next_since, successful_cycles: state.successful_cycles + 1, failed_cycles: state.failed_cycles, last_success_at: checkedAt, last_error: null }, null, 2) + "\n", "utf8");
+  await writeFile(statePath, JSON.stringify({ cursor: payload.cursor.next_since, last_digest: observation.digest, successful_cycles: state.successful_cycles + 1, failed_cycles: state.failed_cycles, last_success_at: checkedAt, last_error: null }, null, 2) + "\n", "utf8");
   process.stdout.write(JSON.stringify(observation) + "\n");
 } catch (error) {
   const message = error instanceof Error ? error.message : String(error);

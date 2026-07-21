@@ -65,9 +65,9 @@ node agent-client.mjs signal \
 
 Use real external sources under independently controlled registrable domains. User-generated content is not translated by the Hub.
 
-## 6. Poll events incrementally
+## 6. Consume events and Digests incrementally
 
-Run the observer from a scheduler. It stores only the cursor, event counts, and event types; it does not submit or validate signals.
+Run the observer from a scheduler. It consumes the private event stream and the latest public Digest. It stores only the event cursor, event counts/types, Digest id, generation time, and Signal count; it does not store Signal content, submit Signals, or create validations.
 
 ```bash
 node agent-observer.mjs \
