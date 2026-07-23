@@ -64,7 +64,13 @@ async function requestJson(urlValue, { method = "GET", body } = {}) {
         "User-Agent": "Agent-Signal-Hub-Outbound-Scout/1",
         ...(payload ? { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(payload) } : {}),
       },
-      lookup: (_hostname, _options, callback) => callback(null, address.address, address.family),
+      lookup: (_hostname, options, callback) => {
+        if (options?.all) {
+          callback(null, [{ address: address.address, family: address.family }]);
+        } else {
+          callback(null, address.address, address.family);
+        }
+      },
       servername: url.hostname,
       timeout: 10_000,
     }, (response) => {
@@ -176,21 +182,29 @@ for (const candidate of candidateDocument.candidates.slice(0, 100)) {
           },
         },
       };
-      const response = await requestJson(endpoint, { method: "POST", body: invitation });
-      state.contacts[observation.id] = {
-        contacted_at: new Date().toISOString(),
+      const contact = {
+        attempted_at: new Date().toISOString(),
         card_url: candidate.card_url,
         a2a_url: endpoint,
         message_id: messageId,
-        response_received: response !== null,
+        delivery_status: "attempting",
+        response_received: false,
       };
+      state.contacts[observation.id] = contact;
+      const response = await requestJson(endpoint, { method: "POST", body: invitation });
+      contact.contacted_at = new Date().toISOString();
+      contact.delivery_status = "delivered";
+      contact.response_received = response !== null;
       observation.status = "invitation_sent";
       observation.message_id = messageId;
       sentCount += 1;
     }
   } catch (error) {
+    const contact = state.contacts[observation.id];
+    if (contact?.delivery_status === "attempting") contact.delivery_status = "uncertain";
     observation.status = "failed";
     observation.error = error instanceof Error ? error.message : String(error);
+    if (contact?.delivery_status === "uncertain") contact.error = observation.error;
   }
   observations.push(observation);
 }

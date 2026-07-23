@@ -19,6 +19,10 @@ const server = createServer((request, response) => {
     received += 1;
     return response.end(JSON.stringify({ jsonrpc: "2.0", result: { accepted: true } }));
   }
+  if (url.pathname === "/a2a-fail" && request.method === "POST") {
+    request.socket.destroy();
+    return;
+  }
   response.statusCode = 404;
   response.end(JSON.stringify({ error: "not found" }));
 });
@@ -53,6 +57,7 @@ try {
     format: "ash-outbound-scout-candidates-v1",
     candidates: [
       { id: "mcp-agent", card_url: `http://127.0.0.1:${port}/agent-card.json`, approved: true, outreach_authorized: true, match_terms: ["mcp"] },
+      { id: "failed-agent", card_url: `http://127.0.0.1:${port}/agent-card.json`, a2a_url: `http://127.0.0.1:${port}/a2a-fail`, approved: true, outreach_authorized: true, match_terms: ["mcp"] },
       { id: "unapproved", card_url: `http://127.0.0.1:${port}/agent-card.json`, approved: false, outreach_authorized: false },
     ],
   }), "utf8");
@@ -64,6 +69,9 @@ try {
   if (received !== 1) throw new Error(`send mode expected one invitation, received ${received}`);
   const firstReport = JSON.parse(await readFile(report, "utf8"));
   if (firstReport.sent_count !== 1 || firstReport.observations.find((item) => item.id === "unapproved")?.status !== "awaiting_manual_approval") throw new Error("approval boundary was not enforced");
+  const firstState = JSON.parse(await readFile(state, "utf8"));
+  if (firstState.contacts["mcp-agent"]?.delivery_status !== "delivered") throw new Error("successful outreach was not recorded as delivered");
+  if (firstState.contacts["failed-agent"]?.delivery_status !== "uncertain") throw new Error(`failed outreach was not retained as uncertain: ${JSON.stringify(firstState)}`);
   await run([...common, "--send"], env);
   if (received !== 1) throw new Error("scout repeated an invitation");
   const secondReport = JSON.parse(await readFile(report, "utf8"));
