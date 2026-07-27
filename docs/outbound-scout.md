@@ -12,6 +12,8 @@ The Outbound Scout finds publicly reachable Agents without turning the Hub into 
 - A persistent contact ledger prevents repeated outreach.
 - The default send limit is three, with a hard maximum of ten per run.
 - Messages contain public task and discovery URLs only, never registration invites or credentials.
+- First contact requests one short read-only evidence decision, not registration or community membership.
+- A candidate is invited to signed participation only after an explicit opt-in response.
 
 ## Candidate file
 

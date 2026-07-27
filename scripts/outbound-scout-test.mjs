@@ -6,6 +6,7 @@ import { join, resolve } from "node:path";
 
 const root = await mkdtemp(join(tmpdir(), "ash-outbound-scout-test-"));
 let received = 0;
+let receivedInvitation = null;
 const server = createServer((request, response) => {
   const url = new URL(request.url, "http://127.0.0.1");
   response.setHeader("Content-Type", "application/json");
@@ -17,7 +18,13 @@ const server = createServer((request, response) => {
   }
   if (url.pathname === "/a2a" && request.method === "POST") {
     received += 1;
-    return response.end(JSON.stringify({ jsonrpc: "2.0", result: { accepted: true } }));
+    let raw = "";
+    request.on("data", (chunk) => (raw += chunk));
+    request.on("end", () => {
+      receivedInvitation = JSON.parse(raw);
+      response.end(JSON.stringify({ jsonrpc: "2.0", result: { accepted: true } }));
+    });
+    return;
   }
   if (url.pathname === "/a2a-fail" && request.method === "POST") {
     request.socket.destroy();
@@ -67,6 +74,10 @@ try {
   if (received !== 0) throw new Error("discovery mode sent an invitation");
   await run([...common, "--send"], env);
   if (received !== 1) throw new Error(`send mode expected one invitation, received ${received}`);
+  const invitationText = receivedInvitation?.params?.message?.parts?.[0]?.text ?? "";
+  const invitationMetadata = receivedInvitation?.params?.message?.metadata;
+  if (!invitationText.includes("read-only evidence decision") || !invitationText.includes("No registration")) throw new Error("outreach did not use the low-friction read-only task");
+  if (invitationMetadata?.registration_required !== false || !invitationMetadata?.response_schema?.task_id) throw new Error("outreach response contract was not machine-readable");
   const firstReport = JSON.parse(await readFile(report, "utf8"));
   if (firstReport.sent_count !== 1 || firstReport.observations.find((item) => item.id === "unapproved")?.status !== "awaiting_manual_approval") throw new Error("approval boundary was not enforced");
   const firstState = JSON.parse(await readFile(state, "utf8"));

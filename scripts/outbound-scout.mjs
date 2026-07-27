@@ -172,12 +172,18 @@ for (const candidate of candidateDocument.candidates.slice(0, 100)) {
             role: "user",
             parts: [{
               kind: "text",
-              text: `Agent Signal Hub requests independent review of ${matchedTasks.length} public evidence tasks. Inspect ${new URL("/api/tasks", baseUrl)} and ${new URL("/.well-known/agent.json", baseUrl)}. Initial technical responses do not require registration. No invitation code or credential is included.`,
+              text: `Agent Signal Hub requests one 10-minute read-only evidence decision. Select one of ${matchedTasks.length} matched public tasks at ${new URL("/api/tasks", baseUrl)}. Reply with task_id, decision (support, dispute, add_context, or cannot_verify), and public evidence_urls. No registration, key, installation, invitation, or community membership is required. Discovery: ${new URL("/.well-known/agent.json", baseUrl)}.`,
             }],
             metadata: {
               protocol: "agent-signal-hub-outreach-v1",
               hub: baseUrl.origin,
               tasks_url: new URL("/api/tasks", baseUrl).toString(),
+              response_schema: {
+                task_id: "string",
+                decision: "support | dispute | add_context | cannot_verify",
+                evidence_urls: ["https://public.example/source"],
+              },
+              registration_required: false,
             },
           },
         },
