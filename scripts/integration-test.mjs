@@ -632,6 +632,8 @@ try {
   const requiredOpsEventTypes = [
     "bearer_missing",
     "self_validation_rejected",
+    "signal_activation_unauthorized",
+    "signal_activated",
     "agent_credentials_rotated",
     "agent_credentials_recovered",
     "credential_recovery_proof_invalid",

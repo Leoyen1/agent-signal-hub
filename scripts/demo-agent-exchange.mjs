@@ -115,6 +115,17 @@ function hasEvidenceRequirement(schema) {
 
 const schemaDocument = requireStatus(await request("/api/schemas"), 200, "read JSON schemas");
 const openApiDocument = requireStatus(await request("/api/openapi.json"), 200, "read OpenAPI document");
+const activateSignalOperation = openApiDocument.paths?.["/api/signals/{id}/activate"]?.post;
+if (
+  !activateSignalOperation?.security?.some((rule) =>
+    ["bearerApiKey", "agentWriteTimestamp", "agentWriteNonce", "agentWriteSignature"].every((scheme) => scheme in rule),
+  ) ||
+  !activateSignalOperation?.responses?.["403"] ||
+  !activateSignalOperation?.responses?.["409"] ||
+  !activateSignalOperation?.responses?.["422"]
+) {
+  throw new Error("Machine contracts are missing the signed owner-only draft activation lifecycle");
+}
 const handoffPolicyDocument = requireStatus(await request("/api/handoff-policy"), 200, "read versioned handoff policy");
 if (
   !handoffPolicyDocument.policy?.version ||
@@ -484,6 +495,51 @@ const sameDomainSources = await request("/api/signals", {
   }),
 });
 requireStatus(sameDomainSources, 422, "reject high confidence sources from one registrable domain");
+
+const draftSignal = requireStatus(
+  await request("/api/signals", {
+    method: "POST",
+    headers: auth(submitter),
+    body: JSON.stringify({
+      title: `Draft activation lifecycle ${runId}`,
+      category: "agent-network",
+      summary: "A reviewed draft exercises the owner-only publication transition.",
+      source_urls: ["https://example.com/draft-review", "https://iana.org/domains/reserved"],
+      evidence: "The draft retains its evidence until the submitting agent explicitly activates it.",
+      confidence: 0.9,
+      urgency: "medium",
+      status: "draft",
+      expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+      submitted_by_agent_id: submitter.id,
+    }),
+  }),
+  201,
+  "create draft signal",
+).signal;
+if (draftSignal.status !== "draft") throw new Error("draft signal was not persisted as draft");
+
+requireStatus(
+  await request(`/api/signals/${draftSignal.id}/activate`, { method: "POST", headers: auth(observer) }),
+  403,
+  "reject draft activation by a non-owner",
+);
+await new Promise((resolve) => setTimeout(resolve, 1_100));
+const activationStartedAt = new Date(Date.now() - 100).toISOString();
+const activatedDraft = requireStatus(
+  await request(`/api/signals/${draftSignal.id}/activate`, { method: "POST", headers: auth(submitter) }),
+  200,
+  "activate draft as submitting agent",
+).signal;
+if (activatedDraft.status !== "active") throw new Error("draft activation did not persist active status");
+requireStatus(
+  await request(`/api/signals/${draftSignal.id}/activate`, { method: "POST", headers: auth(submitter) }),
+  409,
+  "reject repeated draft activation",
+);
+const activationEvents = requireStatus(await request(`/api/events?since=${encodeURIComponent(activationStartedAt)}`), 200, "read draft activation event");
+if (!activationEvents.events?.some((event) => event.type === "signal_updated" && event.subject?.id === draftSignal.id && event.metadata?.status === "active")) {
+  throw new Error("draft activation was not exposed through the signal_updated event stream");
+}
 
 if (expectDigest) {
   const linkedDomainA = `controller-alpha-${runId}.net`;

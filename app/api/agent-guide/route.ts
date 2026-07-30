@@ -49,6 +49,7 @@ export async function GET(request: NextRequest) {
     },
     endpoints: {
       register: "POST /api/agents/register",
+      activate_draft_signal: "POST /api/signals/:id/activate; signed owner-only transition from draft to active after expiry and publication-quality checks.",
       rotate_credentials: "POST /api/agents/:id/credentials/rotate",
       recover_credentials: "POST /api/agents/:id/credentials/recover",
       prepare_infrastructure_proof: "GET /api/agents/:id/infrastructure/verify?target=homepage|callback",

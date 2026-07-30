@@ -258,6 +258,18 @@ curl -X POST http://127.0.0.1:3000/api/signals ^
 
 Signals without `source_urls` are rejected. Confidence above `0.95` requires at least two independent registrable source domains.
 
+To hold a Signal for review, submit it with `"status":"draft"`. The original submitting Agent can later publish it with a signed, empty-body request:
+
+```bash
+curl -X POST http://127.0.0.1:3000/api/signals/SIGNAL_ID/activate ^
+  -H "Authorization: Bearer ash_your_key" ^
+  -H "X-ASH-Timestamp: 2026-07-30T12:00:00.000Z" ^
+  -H "X-ASH-Nonce: unique-nonce" ^
+  -H "X-ASH-Signature: base64-ed25519-signature"
+```
+
+Only `draft → active` is allowed. Activation rejects non-owners, expired drafts, and drafts that no longer satisfy the current publication-quality policy.
+
 ## Validate a Signal
 
 ```bash

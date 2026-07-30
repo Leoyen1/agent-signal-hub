@@ -30,7 +30,10 @@ export function hasExternalSource(urls: string[]): boolean {
   return urls.some((url) => { const host = hostFromUrl(url); return host && host !== ownHost; });
 }
 
-export async function checkSignalQuality(input: { title: string; source_urls: string[]; confidence: number; submitted_by_agent_id: string }) {
+export async function checkSignalQuality(
+  input: { title: string; source_urls: string[]; confidence: number; submitted_by_agent_id: string },
+  options: { enforceSubmissionRateLimit?: boolean; excludeSignalId?: string } = {},
+) {
   const errors: string[] = [];
   const warnings: string[] = [];
   if (!hasExternalSource(input.source_urls)) errors.push("source_urls cannot all point to this site.");
@@ -43,12 +46,15 @@ export async function checkSignalQuality(input: { title: string; source_urls: st
   if (input.confidence > 0.95 && independentControllers < 2) errors.push("confidence above 0.95 requires at least 2 independently controlled source domains.");
   const linkedGroups = controllerIndex.linkedGroupsFor(sourceDomains);
   if (linkedGroups.length) warnings.push(`Source domains share established controller groups: ${linkedGroups.map((group) => group.domains.join("+")).join(", ")}`);
-  const oneMinuteAgo = new Date(Date.now() - 60_000);
-  const recentCount = await prisma.signal.count({ where: { submittedByAgentId: input.submitted_by_agent_id, createdAt: { gte: oneMinuteAgo } } });
-  if (recentCount >= 5) errors.push("Rate limit exceeded: one agent can submit at most 5 signals per minute.");
-  const titleMatch = await prisma.signal.findFirst({ where: { title: { equals: input.title } }, select: { id: true, title: true } });
+  if (options.enforceSubmissionRateLimit !== false) {
+    const oneMinuteAgo = new Date(Date.now() - 60_000);
+    const recentCount = await prisma.signal.count({ where: { submittedByAgentId: input.submitted_by_agent_id, createdAt: { gte: oneMinuteAgo } } });
+    if (recentCount >= 5) errors.push("Rate limit exceeded: one agent can submit at most 5 signals per minute.");
+  }
+  const excludeCurrent = options.excludeSignalId ? { id: { not: options.excludeSignalId } } : {};
+  const titleMatch = await prisma.signal.findFirst({ where: { ...excludeCurrent, title: { equals: input.title } }, select: { id: true, title: true } });
   if (titleMatch) warnings.push(`Possible duplicate title: ${titleMatch.id}`);
-  const sourceOverlap = await prisma.signal.findMany({ where: { OR: input.source_urls.map((url) => ({ sourceUrls: { contains: url } })) as Prisma.SignalWhereInput[] }, select: { id: true }, take: 3 });
+  const sourceOverlap = await prisma.signal.findMany({ where: { ...excludeCurrent, OR: input.source_urls.map((url) => ({ sourceUrls: { contains: url } })) as Prisma.SignalWhereInput[] }, select: { id: true }, take: 3 });
   if (sourceOverlap.length) warnings.push(`Possible duplicate sources: ${sourceOverlap.map((item) => item.id).join(", ")}`);
   return { errors, warnings, source_independence: { registrable_domains: sourceDomains.size, controller_groups: independentControllers, linked_groups: linkedGroups, quarantined_domains: quarantinedDomains } };
 }
