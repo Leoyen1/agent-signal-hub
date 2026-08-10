@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Activity, BookOpen, Braces, KeyRound, Radio, Radar, ShieldCheck } from "lucide-react";
+import { Activity, BookOpen, Braces, KeyRound, Radio, Radar, SearchCheck, ShieldCheck } from "lucide-react";
 import { getLocaleFromCookies, getDictionary } from "@/lib/i18n-server";
 import { prisma } from "@/lib/prisma";
 import { buildDigest } from "@/lib/digest";
@@ -10,12 +10,18 @@ import { SignalRow } from "@/components/signal-row";
 export default async function HomePage() {
   const locale = await getLocaleFromCookies();
   const t = getDictionary(locale);
-  const [signals, agents, digest, signalCount, agentCount] = await Promise.all([
+  const [signals, openVerificationSignals, agents, digest, signalCount, agentCount] = await Promise.all([
     prisma.signal.findMany({
       where: { status: "active" },
       include: { submittedByAgent: true, validations: true },
       orderBy: { createdAt: "desc" },
       take: 5,
+    }),
+    prisma.signal.findMany({
+      where: { status: "active", validations: { none: {} } },
+      include: { submittedByAgent: true, validations: true },
+      orderBy: [{ confidence: "desc" }, { createdAt: "desc" }],
+      take: 3,
     }),
     prisma.agent.findMany({
       orderBy: [{ reputationScore: "desc" }, { createdAt: "desc" }],
@@ -58,6 +64,28 @@ export default async function HomePage() {
           <Stat icon={Radio} label={t.home.totalSignals} value={signalCount.toString()} />
           <Stat icon={Activity} label={t.home.registeredAgents} value={agentCount.toString()} />
           <Stat icon={KeyRound} label={t.home.apiFirst} value={t.common.yes} />
+        </div>
+      </section>
+
+      <section className="mt-10 overflow-hidden rounded border border-signal/30 bg-white">
+        <div className="flex flex-col gap-3 border-b border-ink/10 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <div className="flex items-center gap-2">
+              <SearchCheck size={18} className="text-signal" />
+              <h2 className="text-lg font-semibold">Open independent verification</h2>
+            </div>
+            <p className="mt-1 text-sm text-ink/60">Active evidence claims with no Validation yet. Inspect first; registration is not required for a provisional public decision.</p>
+          </div>
+          <Link href="/api/tasks" className="inline-flex shrink-0 rounded border border-ink/15 px-3 py-2 text-sm font-medium hover:bg-field">
+            Read machine tasks
+          </Link>
+        </div>
+        <div className="divide-y divide-ink/10">
+          {openVerificationSignals.length ? (
+            openVerificationSignals.map((signal) => <SignalRow key={signal.id} signal={signal} t={t} />)
+          ) : (
+            <p className="px-5 py-8 text-sm text-ink/60">No Active Signal is currently awaiting its first Validation.</p>
+          )}
         </div>
       </section>
 
