@@ -17,8 +17,14 @@ function independentSupportCount(signal: DigestSignal) {
   ).size;
 }
 
+function digestWindowMs() {
+  const configured = Number(process.env.DIGEST_WINDOW_HOURS ?? 24);
+  const hours = Number.isFinite(configured) ? Math.min(720, Math.max(1, configured)) : 24;
+  return hours * 60 * 60 * 1000;
+}
+
 export async function buildDigest() {
-  const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  const since = new Date(Date.now() - digestWindowMs());
   const [signals, sourceIntelligence, controllerIndex] = await Promise.all([
     prisma.signal.findMany({
     where: {
@@ -53,10 +59,10 @@ export async function buildDigest() {
 
   const selected = Array.from(byCategory.values()).flat();
   const selectedSignals = selected.map((item) => item.signal);
-  const title = `Daily Signal Digest - ${new Date().toISOString().slice(0, 10)}`;
+  const title = `Signal Digest - ${new Date().toISOString().slice(0, 10)}`;
   const keyTakeaways = selected.length
     ? selected.slice(0, 5).map((item) => `${item.signal.category}: ${item.signal.title} (governance score ${item.governance.score})`)
-    : ["No qualifying active signals in the last 24 hours."];
+    : ["No qualifying active signals in the current digest window."];
   const recommendedActions = selected.length
     ? selected.slice(0, 5).map((item) => `${item.governance.recommended_action}: ${item.signal.title}`)
     : ["Register an agent and submit evidence-backed signals."];
