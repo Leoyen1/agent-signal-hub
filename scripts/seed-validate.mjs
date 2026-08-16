@@ -44,6 +44,9 @@ const ONLY = (() => {
 
 // repo (owner/name) -> registry mapping. pkg === "__from_title__" means the
 // package name is parsed from the release title (e.g. "langchain-openai==1.5.0").
+// A repo that publishes several packages under language prefixes (e.g.
+// "python/v1.52.0", "typescript/v1.13.0") uses `byPrefix` instead, keyed by the
+// lowercased release-tag language. Prefixes without an entry are skipped.
 const REPO_MAP = {
   "anthropics/claude-code":      { registry: "npm",   pkg: "@anthropic-ai/claude-code" },
   "google-gemini/gemini-cli":    { registry: "npm",   pkg: "@google/gemini-cli" },
@@ -52,6 +55,18 @@ const REPO_MAP = {
   "google/adk-python":           { registry: "pypi",  pkg: "google-adk" },
   "langchain-ai/langchain":      { registry: "pypi",  pkg: "__from_title__" },
   "microsoft/semantic-kernel":   { registry: "nuget", pkg: "Microsoft.SemanticKernel" },
+  "strands-agents/harness-sdk": {
+    byPrefix: {
+      python:     { registry: "pypi", pkg: "strands-agents" },
+      typescript: { registry: "npm",  pkg: "@strands-agents/sdk" },
+    },
+  },
+};
+
+// GitHub repository id -> owner/name, for scout signals that cite
+// api.github.com/repositories/<id>/releases instead of the owner/name path.
+const REPO_ID_MAP = {
+  "983715534": "strands-agents/harness-sdk",
 };
 
 const SEEDS = ["seed-1-active.json", "seed-2-active.json"];
@@ -62,6 +77,8 @@ function extractRepo(sourceUrlsRaw) {
   for (const u of urls) {
     const m = String(u).match(/api\.github\.com\/repos\/([^/]+\/[^/]+)\/releases/);
     if (m) return m[1];
+    const id = String(u).match(/api\.github\.com\/repositories\/(\d+)\/releases/);
+    if (id && REPO_ID_MAP[id[1]]) return REPO_ID_MAP[id[1]];
   }
   return null;
 }
@@ -72,13 +89,15 @@ function parseVersion(title) {
   let v = title.slice(idx + "Releases:".length).trim();
   if (!v) return null;
   const eq = v.match(/^([A-Za-z0-9_.-]+)==([0-9][\w.\-+]*)$/);
-  if (eq) return { pkgFromTitle: eq[1], version: eq[2] };
+  if (eq) return { pkgFromTitle: eq[1], prefix: null, version: eq[2] };
   v = v.replace(/^Release\s+/i, "");
-  v = v.replace(/^(python|mcp|typescript|dotnet|js|java|go|ruby|php)\//i, "");
+  const prefixMatch = v.match(/^(python|mcp|typescript|dotnet|js|java|go|ruby|php)\//i);
+  const prefix = prefixMatch ? prefixMatch[1].toLowerCase() : null;
+  if (prefixMatch) v = v.slice(prefixMatch[0].length);
   v = v.replace(/^dotnet-/, "");
   v = v.replace(/^v/, "");
   v = v.trim();
-  return /^[0-9][\w.\-+]*$/.test(v) ? { pkgFromTitle: null, version: v } : null;
+  return /^[0-9][\w.\-+]*$/.test(v) ? { pkgFromTitle: null, prefix, version: v } : null;
 }
 
 async function fetchJson(url) {
@@ -179,9 +198,11 @@ async function main() {
     if (ONLY && !ONLY.has(sig.id)) continue;
     const repo = extractRepo(sig.sourceUrls);
     if (!repo || !REPO_MAP[repo]) continue;
-    const mapping = REPO_MAP[repo];
     const parsed = parseVersion(sig.title);
     if (!parsed) continue;
+    const repoMapping = REPO_MAP[repo];
+    const mapping = repoMapping.byPrefix ? repoMapping.byPrefix[parsed.prefix] : repoMapping;
+    if (!mapping) continue;
     const pkg = mapping.pkg === "__from_title__" ? parsed.pkgFromTitle : mapping.pkg;
     if (!pkg) continue;
 
