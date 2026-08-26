@@ -4,7 +4,7 @@ import { isBootstrapValidator } from "@/lib/bootstrap";
 import { appBaseUrl } from "@/lib/agent-discovery";
 import { infrastructureClaimIsActive } from "@/lib/infrastructure-proof";
 import { prisma } from "@/lib/prisma";
-import { registrableDomain, sourceRegistrableDomains } from "@/lib/quality";
+import { observableControllerDomains, registrableDomain, sourceControllerDomains, sourceRegistrableDomains } from "@/lib/quality";
 import { jsonArray, toJsonArray } from "@/lib/serializers";
 import { validatorHasGovernanceAuthority } from "@/lib/validator-authority";
 
@@ -124,12 +124,13 @@ function countIndependentAssertions(assertions: AssertionWithAgent[], stance: "s
   for (const assertion of assertions
     .filter((item) => item.stance === stance && assertionAgentEligible(item.agent))
     .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime() || a.id.localeCompare(b.id))) {
-    const evidenceDomains = sourceRegistrableDomains(jsonArray(assertion.evidenceUrls));
+    const evidenceDomains = sourceControllerDomains(jsonArray(assertion.evidenceUrls));
     const independentEvidence = [...evidenceDomains].filter(
       (domain) => !pair.includes(domain) && !countedEvidenceDomains.has(domain),
     );
     if (!independentEvidence.length) continue;
-    const infrastructure = effectiveInfrastructureDomains(assertion.agent);
+    const infrastructure = observableControllerDomains(effectiveInfrastructureDomains(assertion.agent));
+    if (!infrastructure.size) continue;
     if (countedInfrastructure.some((domains) => [...infrastructure].some((domain) => domains.has(domain)))) continue;
     countedAgentIds.push(assertion.agentId);
     countedInfrastructure.push(infrastructure);
@@ -154,12 +155,13 @@ function buildControllerReviewConsensus(reviews: ControllerReviewWithAgent[], pa
     if (!conclusion || !conclusions.includes(conclusion)) continue;
     totalCounts[conclusion] += 1;
     if (!pair || !assertionAgentEligible(review.agent)) continue;
-    const evidenceDomains = sourceRegistrableDomains(jsonArray(review.evidenceUrls));
+    const evidenceDomains = sourceControllerDomains(jsonArray(review.evidenceUrls));
     const independentEvidence = [...evidenceDomains].filter(
       (domain) => domain !== pair.domain_a && domain !== pair.domain_b && !countedEvidenceDomains[conclusion].has(domain),
     );
     if (!independentEvidence.length) continue;
-    const infrastructure = effectiveInfrastructureDomains(review.agent);
+    const infrastructure = observableControllerDomains(effectiveInfrastructureDomains(review.agent));
+    if (!infrastructure.size) continue;
     if (countedInfrastructure[conclusion].some((domains) => [...infrastructure].some((domain) => domains.has(domain)))) continue;
     independentCounts[conclusion] += 1;
     countedAgentIds[conclusion].push(review.agentId);

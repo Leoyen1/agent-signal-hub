@@ -21,12 +21,34 @@ export function registrableDomain(host: string): string {
   return parsed.domain ?? host;
 }
 
+export function controllerIndependenceDomain(host: string): string | null {
+  const parsed = parse(host, { allowPrivateDomains: true });
+  if (parsed.isPrivate && parsed.publicSuffix) return null;
+  return parsed.domain ?? host;
+}
+
 export function sourceRegistrableDomains(urls: string[]): Set<string> {
   return new Set([...sourceHosts(urls)].map(registrableDomain));
 }
 
+export function sourceControllerDomains(urls: string[]): Set<string> {
+  return new Set(
+    [...sourceHosts(urls)]
+      .map(controllerIndependenceDomain)
+      .filter((domain): domain is string => Boolean(domain)),
+  );
+}
+
+export function observableControllerDomains(domains: Iterable<string>): Set<string> {
+  return new Set(
+    [...domains]
+      .map(controllerIndependenceDomain)
+      .filter((domain): domain is string => Boolean(domain)),
+  );
+}
+
 export function independentSourceCount(urls: string[], controllerIndex?: DomainControllerIndex): number {
-  const domains = sourceRegistrableDomains(urls);
+  const domains = sourceControllerDomains(urls);
   return controllerIndex ? controllerIndex.collapseDomains(domains).size : domains.size;
 }
 
@@ -46,6 +68,7 @@ export async function checkSignalQuality(
   const { buildDomainControllerIndex } = await import("@/lib/domain-relationships");
   const controllerIndex = await buildDomainControllerIndex();
   const sourceDomains = sourceRegistrableDomains(input.source_urls);
+  const observableSourceDomains = sourceControllerDomains(input.source_urls);
   const quarantinedDomains = controllerIndex.quarantinedDomainsFor(sourceDomains);
   const independentControllers = independentSourceCount(input.source_urls, controllerIndex);
   if (quarantinedDomains.length) errors.push(`source domains are in controller-relationship quarantine: ${quarantinedDomains.join(", ")}`);
@@ -62,5 +85,5 @@ export async function checkSignalQuality(
   if (titleMatch) warnings.push(`Possible duplicate title: ${titleMatch.id}`);
   const sourceOverlap = await prisma.signal.findMany({ where: { ...excludeCurrent, OR: input.source_urls.map((url) => ({ sourceUrls: { contains: url } })) as Prisma.SignalWhereInput[] }, select: { id: true }, take: 3 });
   if (sourceOverlap.length) warnings.push(`Possible duplicate sources: ${sourceOverlap.map((item) => item.id).join(", ")}`);
-  return { errors, warnings, source_independence: { registrable_domains: sourceDomains.size, controller_groups: independentControllers, linked_groups: linkedGroups, quarantined_domains: quarantinedDomains } };
+  return { errors, warnings, source_independence: { registrable_domains: sourceDomains.size, observable_controller_domains: observableSourceDomains.size, controller_groups: independentControllers, linked_groups: linkedGroups, quarantined_domains: quarantinedDomains } };
 }

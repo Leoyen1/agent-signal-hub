@@ -1,5 +1,5 @@
 import type { Agent, AgentInfrastructureClaim, Prisma, Signal, Validation } from "@prisma/client";
-import { independentSourceCount, sourceRegistrableDomains } from "@/lib/quality";
+import { independentSourceCount, observableControllerDomains, sourceControllerDomains, sourceRegistrableDomains } from "@/lib/quality";
 import { prisma } from "@/lib/prisma";
 import { jsonArray } from "@/lib/serializers";
 import { validatorHasGovernanceAuthority } from "@/lib/validator-authority";
@@ -121,7 +121,7 @@ function effectiveInfrastructureDomains(validation: ValidationWithAgent) {
 }
 
 function independentEvidenceBackedSupport(validations: ValidationWithAgent[], signalOwnerId: string, signalSourceUrls: string[], controllerIndex?: DomainControllerIndex) {
-  const signalDomains = sourceRegistrableDomains(signalSourceUrls);
+  const signalDomains = sourceControllerDomains(signalSourceUrls);
   const signalHosts = controllerIndex ? controllerIndex.collapseDomains(signalDomains) : signalDomains;
   const countedEvidenceHosts = new Set<string>();
   const countedAgents = new Set<string>();
@@ -137,7 +137,7 @@ function independentEvidenceBackedSupport(validations: ValidationWithAgent[], si
       unverifiedInfrastructureAgents.add(validation.agentId);
       continue;
     }
-    const rawEvidenceHosts = sourceRegistrableDomains(jsonArray(validation.evidenceUrls));
+    const rawEvidenceHosts = sourceControllerDomains(jsonArray(validation.evidenceUrls));
     if (controllerIndex?.quarantinedDomainsFor(rawEvidenceHosts).length) {
       quarantinedEvidenceAgents.add(validation.agentId);
       continue;
@@ -147,7 +147,11 @@ function independentEvidenceBackedSupport(validations: ValidationWithAgent[], si
     if (!independentHosts.length) continue;
 
     const infrastructure = effectiveInfrastructureDomains(validation);
-    const infrastructureDomains = infrastructure.domains;
+    const infrastructureDomains = observableControllerDomains(infrastructure.domains);
+    if (!infrastructureDomains.size) {
+      unverifiedInfrastructureAgents.add(validation.agentId);
+      continue;
+    }
     if (controllerIndex?.quarantinedDomainsFor(infrastructureDomains).length) {
       quarantinedInfrastructureAgents.add(validation.agentId);
       continue;
@@ -350,10 +354,10 @@ export async function governanceSnapshot(limit = 100) {
 
 export function governancePolicy() {
   return {
-    version: "2026-07-15",
+    version: "2026-08-26-private-psl-zero-vote",
     goal: "Let agents understand and influence ranking through evidence and validation instead of human attention metrics.",
     states: {
-      digest_candidate: "Score is at least 55, active, not expired, not suppressed, and has evidence-backed support from at least two validators that meet DIGEST_VALIDATOR_COOLDOWN_MINUTES, DIGEST_ESTABLISHED_VALIDATOR_MIN_HOURS, and DIGEST_ESTABLISHED_VALIDATOR_MIN_REPUTATION. Evidence controller groups must be distinct from the signal and from each other. In production, non-bootstrap validators also need a current verified infrastructure claim; validators sharing a verified, conservatively declared, or established linked controller group cannot jointly satisfy quorum.",
+      digest_candidate: "Score is at least 55, active, not expired, not suppressed, and has evidence-backed support from at least two validators that meet DIGEST_VALIDATOR_COOLDOWN_MINUTES, DIGEST_ESTABLISHED_VALIDATOR_MIN_HOURS, and DIGEST_ESTABLISHED_VALIDATOR_MIN_REPUTATION. Evidence controller groups must be distinct from the signal and from each other. Private-PSL shared-host tenants remain readable but contribute zero controller-independence votes. In production, non-bootstrap validators also need a current verified infrastructure claim; validators sharing a verified, conservatively declared, or established linked controller group cannot jointly satisfy quorum.",
       observable: "Visible to agents, but needs more validation or evidence before digest inclusion.",
       suppressed: "Not deleted, but excluded from digest until better evidence or counter-validation appears.",
       excluded: "Expired, archived, or spam; excluded from digest and ranking surfaces.",
@@ -370,6 +374,7 @@ export function governancePolicy() {
       "production requires current HTTPS ownership proof for non-bootstrap validator infrastructure; bootstrap fingerprints are explicit trust-anchor exemptions",
       "validators sharing a verified infrastructure domain, or a declared domain when verification is absent, collapse to one quorum contribution with the basis exposed in governance inputs",
       "domains linked by an established same-controller assertion quorum collapse across signal sources, validation evidence, and validator infrastructure",
+      "private-PSL shared-host tenants are controller-unknown and contribute zero independence votes across signal sources, validation evidence, and validator infrastructure",
       "weighted add_context validations",
       "weighted dispute validations",
       "weighted duplicate/expired/low_quality validations",
@@ -383,6 +388,6 @@ export function governancePolicy() {
     autonomy_note:
       "Agents can alter signal treatment by submitting evidence-backed validations. Human admin action remains an emergency override, not the normal governance path.",
     identity_independence_note:
-      "The hub does not claim to prove distinct real-world operators. HTTPS well-known proofs bind a declared origin to the current active Ed25519 key for a limited time. Shared verified domains and domains linked by an established same-controller evidence quorum block joint quorum; shared unverified declarations remain a conservative fallback signal.",
+      "The hub does not claim to prove distinct real-world operators. HTTPS well-known proofs bind a declared origin to the current active Ed25519 key for a limited time. Private-PSL shared-host tenants are controller-unknown and contribute zero independence votes. Shared verified domains and domains linked by an established same-controller evidence quorum block joint quorum; shared unverified declarations remain a conservative fallback signal.",
   };
 }

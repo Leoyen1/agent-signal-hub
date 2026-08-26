@@ -363,6 +363,7 @@ const submitter = await register("submitter");
 const validator = useBootstrapValidators ? bootstrapSeeds[0] : await register("validator", undefined, sharedInfrastructurePrimary);
 const observer = useBootstrapValidators ? bootstrapSeeds[2] : await register("observer", undefined, independentInfrastructure);
 const repeater = useBootstrapValidators ? bootstrapSeeds[1] : await register("repeater", undefined, sharedInfrastructureSecondary);
+const sharedHostValidator = await register("shared-host-validator", undefined, { homepageUrl: "https://reviewer.github.io/agent" });
 const sourceTaskAgent = useBootstrapValidators ? await register("source-task-agent") : observer;
 const credentialLifecycleAgent = useBootstrapValidators ? await register("credential-lifecycle-agent", undefined, { homepageUrl: "https://credential-lifecycle.net/agent" }) : repeater;
 const credentialInfrastructureTarget = useBootstrapValidators ? "homepage" : "callback";
@@ -519,6 +520,23 @@ for (const [suffix, left, right] of [
     }),
   });
   requireStatus(tenantSignal, 422, `reject shared-hosting tenants on ${suffix}`);
+
+  const mixedTenantSignal = await request("/api/signals", {
+    method: "POST",
+    headers: auth(submitter),
+    body: JSON.stringify({
+      title: `Shared hosting zero independence ${suffix} ${runId}`,
+      category: "agent-network",
+      summary: "A shared-host tenant remains readable but contributes zero controller-independence votes.",
+      source_urls: ["https://independent-source.example/report", `https://${left}/report`],
+      evidence: "One observable controller plus one controller-unknown shared-host tenant is still only one independent source.",
+      confidence: 0.96,
+      urgency: "medium",
+      expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+      submitted_by_agent_id: submitter.id,
+    }),
+  });
+  requireStatus(mixedTenantSignal, 422, `reject one owned domain plus one shared-hosting tenant on ${suffix}`);
 }
 
 const draftSignal = requireStatus(
@@ -779,6 +797,53 @@ if (expectDigest) {
     201,
     "submit validator infrastructure independence signal",
   ).signal;
+
+  const sharedHostEvidenceSignal = requireStatus(
+    await request("/api/signals", {
+      method: "POST",
+      headers: auth(credentialLifecycleAgent),
+      body: JSON.stringify({
+        title: `Shared-host evidence independence ${runId}`,
+        category: "agent-network",
+        summary: "Shared-host evidence remains readable but contributes no controller-independence vote.",
+        source_urls: ["https://source-evidence-one.net/report", "https://source-evidence-two.org/report"],
+        evidence: "The validation path must fail closed when evidence or validator infrastructure has no observable controller.",
+        confidence: 0.9,
+        urgency: "high",
+        expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+        submitted_by_agent_id: credentialLifecycleAgent.id,
+      }),
+    }),
+    201,
+    "submit shared-host evidence independence signal",
+  ).signal;
+  for (const [agent, evidenceUrl] of [
+    [observer, "https://evidence-reviewer.pages.dev/report"],
+    [sharedHostValidator, "https://independent-evidence.net/report"],
+    [validator, "https://observable-evidence.org/report"],
+  ]) {
+    requireStatus(
+      await request(`/api/signals/${sharedHostEvidenceSignal.id}/validate`, {
+        method: "POST",
+        headers: auth(agent),
+        body: JSON.stringify({ agent_id: agent.id, verdict: "support", evidence_urls: [evidenceUrl] }),
+      }),
+      201,
+      "record shared-host zero-vote support",
+    );
+  }
+  const sharedHostEvidenceGovernance = requireStatus(
+    await request(`/api/signals/${sharedHostEvidenceSignal.id}/governance`),
+    200,
+    "read shared-host zero-vote governance",
+  ).governance;
+  if (
+    sharedHostEvidenceGovernance.state !== "observable" ||
+    sharedHostEvidenceGovernance.inputs?.established_independent_evidence_backed_support_count !== 1 ||
+    !sharedHostEvidenceGovernance.inputs?.unverified_infrastructure_validator_ids?.includes(sharedHostValidator.id)
+  ) {
+    throw new Error(`shared-host evidence or infrastructure contributed an independence vote: ${JSON.stringify(sharedHostEvidenceGovernance)}`);
+  }
   for (const [agent, evidenceUrl] of [
     [validator, "https://review-alpha.dev/evidence"],
     [repeater, "https://review-beta.io/evidence"],

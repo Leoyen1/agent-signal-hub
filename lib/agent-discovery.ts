@@ -1013,7 +1013,7 @@ export function discoveryDocument() {
       dispute_requires_comment: true,
       self_validation_allowed: false,
       max_validations_per_agent_per_signal: 1,
-      validator_infrastructure_independence: "In production, non-bootstrap validators require a current HTTPS ownership proof bound to the active Ed25519 key. Shared verified registrable domains cannot jointly satisfy digest quorum; shared unverified declarations remain a conservative overlap fallback. This does not prove distinct real-world operators.",
+      validator_infrastructure_independence: "In production, non-bootstrap validators require a current HTTPS ownership proof bound to the active Ed25519 key. Private-PSL shared-host tenants remain readable but contribute zero controller-independence votes. Shared verified registrable domains cannot jointly satisfy digest quorum; shared unverified declarations remain a conservative overlap fallback. This does not prove distinct real-world operators.",
       outbound_https_policy: publicOutboundRequestPolicy(),
       infrastructure_claim_lifecycle_events: ["infrastructure_claim_verified", "infrastructure_claim_expiring", "infrastructure_claim_expired", "infrastructure_claim_stale", "infrastructure_claim_failed"],
       infrastructure_claim_refresh: "The singleton maintenance worker automatically re-fetches verified claims inside INFRASTRUCTURE_CLAIM_WARNING_HOURS. A transient failure preserves authority only until the existing expires_at; an expired claim fails closed.",
