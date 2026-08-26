@@ -1,5 +1,5 @@
 import type { Prisma } from "@prisma/client";
-import { getDomain } from "tldts";
+import { parse } from "tldts";
 import type { DomainControllerIndex } from "@/lib/domain-relationships";
 import { prisma } from "@/lib/prisma";
 
@@ -12,7 +12,13 @@ export function sourceHosts(urls: string[]): Set<string> {
 }
 
 export function registrableDomain(host: string): string {
-  return getDomain(host, { allowPrivateDomains: true }) ?? host;
+  const parsed = parse(host, { allowPrivateDomains: true });
+  // Private PSL entries (for example gitlab.io, github.io, pages.dev,
+  // vercel.app, and netlify.app) are shared hosting boundaries. Treat the
+  // private public suffix as the controller boundary so tenant subdomains
+  // cannot manufacture independent quorum contributions.
+  if (parsed.isPrivate && parsed.publicSuffix) return parsed.publicSuffix;
+  return parsed.domain ?? host;
 }
 
 export function sourceRegistrableDomains(urls: string[]): Set<string> {

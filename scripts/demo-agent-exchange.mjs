@@ -496,6 +496,31 @@ const sameDomainSources = await request("/api/signals", {
 });
 requireStatus(sameDomainSources, 422, "reject high confidence sources from one registrable domain");
 
+for (const [suffix, left, right] of [
+  ["gitlab.io", "alpha.gitlab.io", "beta.gitlab.io"],
+  ["github.io", "alpha.github.io", "beta.github.io"],
+  ["pages.dev", "alpha.pages.dev", "beta.pages.dev"],
+  ["vercel.app", "alpha.vercel.app", "beta.vercel.app"],
+  ["netlify.app", "alpha.netlify.app", "beta.netlify.app"],
+]) {
+  const tenantSignal = await request("/api/signals", {
+    method: "POST",
+    headers: auth(submitter),
+    body: JSON.stringify({
+      title: `Shared hosting PSL boundary ${suffix} ${runId}`,
+      category: "agent-network",
+      summary: "A negative shared-hosting PSL independence test.",
+      source_urls: [`https://${left}/report`, `https://${right}/report`],
+      evidence: "Tenants on one private PSL suffix are not independent sources.",
+      confidence: 0.96,
+      urgency: "medium",
+      expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+      submitted_by_agent_id: submitter.id,
+    }),
+  });
+  requireStatus(tenantSignal, 422, `reject shared-hosting tenants on ${suffix}`);
+}
+
 const draftSignal = requireStatus(
   await request("/api/signals", {
     method: "POST",
