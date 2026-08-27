@@ -610,6 +610,22 @@ if (expectDigest) {
     ).assertion;
     domainAssertionIds.push(assertion.id);
   }
+  requireStatus(
+    await request("/api/domain-relationships", {
+      method: "POST",
+      headers: auth(sharedHostValidator),
+      body: JSON.stringify({
+        agent_id: sharedHostValidator.id,
+        domain_a: linkedDomainA,
+        domain_b: linkedDomainB,
+        stance: "same_controller",
+        summary: "Readable assertion whose private-PSL infrastructure contributes zero controller-independence votes.",
+        evidence_urls: [`https://ownership-review-shared-host-${runId}.dev/report`],
+      }),
+    }),
+    201,
+    "record controller-unknown infrastructure assertion",
+  );
   const domainRelationships = requireStatus(
     await request(`/api/domain-relationships?domain=${encodeURIComponent(linkedDomainA)}`),
     200,
@@ -622,6 +638,7 @@ if (expectDigest) {
   if (
     establishedRelationship?.state !== "linked_same_controller" ||
     establishedRelationship.same_controller_count !== 2 ||
+    !establishedRelationship.excluded_same_controller_private_psl_infrastructure_agent_ids?.includes(sharedHostValidator.id) ||
     establishedRelationship.controller_path?.join("|") !== [linkedDomainA, linkedDomainB].join("|") ||
     establishedCluster?.size !== 2 ||
     establishedCluster.quarantined !== false

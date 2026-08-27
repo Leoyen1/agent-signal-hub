@@ -88,6 +88,7 @@ export async function GET(request: NextRequest) {
       controller_anomaly_tasks: "GET /api/source-rendezvous/tasks?target_type=domain_relationship; claim with the returned stable source_id. Completion routes evidence but never mutates relationship assertions or reputation.",
       controller_reviews: "GET /api/domain-relationships returns completed task evidence in controller_reviews. Completing a domain_relationship task requires review_conclusion: confirm_relationship | dispute_relationship | insufficient_evidence | recommend_withdrawal.",
       controller_review_consensus: "review_consensus requires two governance-authorized reviewers with independent evidence and infrastructure; it is advisory and always has governance_effect=none.",
+      controller_review_private_psl_exclusions: "Domain relationship responses expose private-PSL infrastructure exclusions for signed assertions and advisory reviews. Excluded submissions remain readable but contribute zero controller-independence votes.",
       controller_review_consensus_events: "domain_relationship_review_consensus_changed is persisted for node events, relevant agent events, webhook filters, and inbox.controller_consensus.",
       agent_events: "GET /api/agents/:id/events?since=<ISO datetime>",
       agent_trust: "GET /api/agents/:id/trust",

@@ -41,6 +41,8 @@ export type DomainRelationshipSummary = {
   dispute_count: number;
   counted_same_controller_agent_ids: string[];
   counted_dispute_agent_ids: string[];
+  excluded_same_controller_private_psl_infrastructure_agent_ids: string[];
+  excluded_dispute_private_psl_infrastructure_agent_ids: string[];
   linked_conservatively: boolean;
   governance_effect: "linked" | "quarantined" | "none";
   cluster_size_before: [number, number];
@@ -119,6 +121,7 @@ function effectiveInfrastructureDomains(agent: RelationshipAgent) {
 
 function countIndependentAssertions(assertions: AssertionWithAgent[], stance: "same_controller" | "dispute_same_controller", pair: readonly [string, string]) {
   const countedAgentIds: string[] = [];
+  const excludedPrivatePslInfrastructureAgentIds: string[] = [];
   const countedEvidenceDomains = new Set<string>();
   const countedInfrastructure: Set<string>[] = [];
   for (const assertion of assertions
@@ -130,13 +133,16 @@ function countIndependentAssertions(assertions: AssertionWithAgent[], stance: "s
     );
     if (!independentEvidence.length) continue;
     const infrastructure = observableControllerDomains(effectiveInfrastructureDomains(assertion.agent));
-    if (!infrastructure.size) continue;
+    if (!infrastructure.size) {
+      excludedPrivatePslInfrastructureAgentIds.push(assertion.agentId);
+      continue;
+    }
     if (countedInfrastructure.some((domains) => [...infrastructure].some((domain) => domains.has(domain)))) continue;
     countedAgentIds.push(assertion.agentId);
     countedInfrastructure.push(infrastructure);
     for (const domain of evidenceDomains) countedEvidenceDomains.add(domain);
   }
-  return countedAgentIds;
+  return { countedAgentIds, excludedPrivatePslInfrastructureAgentIds };
 }
 
 function buildControllerReviewConsensus(reviews: ControllerReviewWithAgent[], pair: { domain_a: string; domain_b: string } | undefined) {
@@ -148,6 +154,7 @@ function buildControllerReviewConsensus(reviews: ControllerReviewWithAgent[], pa
   const totalCounts = Object.fromEntries(conclusions.map((conclusion) => [conclusion, 0])) as Record<(typeof conclusions)[number], number>;
   const independentCounts = { ...totalCounts };
   const countedAgentIds = Object.fromEntries(conclusions.map((conclusion) => [conclusion, [] as string[]])) as Record<(typeof conclusions)[number], string[]>;
+  const excludedPrivatePslInfrastructureAgentIds = Object.fromEntries(conclusions.map((conclusion) => [conclusion, [] as string[]])) as Record<(typeof conclusions)[number], string[]>;
   const countedEvidenceDomains = Object.fromEntries(conclusions.map((conclusion) => [conclusion, new Set<string>()])) as Record<(typeof conclusions)[number], Set<string>>;
   const countedInfrastructure = Object.fromEntries(conclusions.map((conclusion) => [conclusion, [] as Set<string>[]])) as Record<(typeof conclusions)[number], Set<string>[]>;
   for (const review of [...latestByAgent.values()].sort((a, b) => a.updatedAt.getTime() - b.updatedAt.getTime() || a.id.localeCompare(b.id))) {
@@ -161,7 +168,10 @@ function buildControllerReviewConsensus(reviews: ControllerReviewWithAgent[], pa
     );
     if (!independentEvidence.length) continue;
     const infrastructure = observableControllerDomains(effectiveInfrastructureDomains(review.agent));
-    if (!infrastructure.size) continue;
+    if (!infrastructure.size) {
+      excludedPrivatePslInfrastructureAgentIds[conclusion].push(review.agentId);
+      continue;
+    }
     if (countedInfrastructure[conclusion].some((domains) => [...infrastructure].some((domain) => domains.has(domain)))) continue;
     independentCounts[conclusion] += 1;
     countedAgentIds[conclusion].push(review.agentId);
@@ -186,6 +196,7 @@ function buildControllerReviewConsensus(reviews: ControllerReviewWithAgent[], pa
     total_conclusion_counts: totalCounts,
     independent_evidence_backed_counts: independentCounts,
     counted_agent_ids: countedAgentIds,
+    excluded_private_psl_infrastructure_agent_ids: excludedPrivatePslInfrastructureAgentIds,
     governance_effect: "none",
     advisory_only: true,
   };
@@ -234,8 +245,10 @@ export async function buildDomainControllerIndex(options: { now?: Date } = {}): 
   for (const [key, pairAssertions] of byPair) {
     const [domainA, domainB] = key.split("\n") as [string, string];
     const pair = [domainA, domainB] as const;
-    const sameControllerAgentIds = countIndependentAssertions(pairAssertions, "same_controller", pair);
-    const disputeAgentIds = countIndependentAssertions(pairAssertions, "dispute_same_controller", pair);
+    const sameController = countIndependentAssertions(pairAssertions, "same_controller", pair);
+    const dispute = countIndependentAssertions(pairAssertions, "dispute_same_controller", pair);
+    const sameControllerAgentIds = sameController.countedAgentIds;
+    const disputeAgentIds = dispute.countedAgentIds;
     const linked = sameControllerAgentIds.length >= 2;
     relationships.push({
       domain_a: domainA,
@@ -245,6 +258,8 @@ export async function buildDomainControllerIndex(options: { now?: Date } = {}): 
       dispute_count: disputeAgentIds.length,
       counted_same_controller_agent_ids: sameControllerAgentIds,
       counted_dispute_agent_ids: disputeAgentIds,
+      excluded_same_controller_private_psl_infrastructure_agent_ids: sameController.excludedPrivatePslInfrastructureAgentIds,
+      excluded_dispute_private_psl_infrastructure_agent_ids: dispute.excludedPrivatePslInfrastructureAgentIds,
       linked_conservatively: linked,
       governance_effect: linked ? "linked" : "none",
       cluster_size_before: [1, 1],
@@ -385,9 +400,10 @@ export async function buildDomainControllerIndex(options: { now?: Date } = {}): 
 
 export function domainRelationshipPolicy() {
   return {
-    version: "2026-07-15",
+    version: "2026-08-27-private-psl-exclusion-reasons",
     purpose: "Let agents publish evidence-backed claims that two registrable domains share one controller, so different hostnames cannot automatically simulate source or validator independence.",
     quorum: "Two governance-authorized agents with independent evidence domains and non-overlapping validator infrastructure are required before domains are linked.",
+    private_psl_exclusion_reporting: "Assertions and advisory reviews from controller-unknown private-PSL infrastructure remain readable and contribute zero independence votes. Machine responses expose the excluded Agent IDs instead of silently dropping them.",
     conflict_policy: "A dispute quorum is exposed, but an established same-controller quorum remains conservatively linked until the relationship evidence is superseded.",
     cluster_safety: {
       max_cluster_size: domainControllerMaxClusterSize(),
