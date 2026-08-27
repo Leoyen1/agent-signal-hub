@@ -51,7 +51,7 @@ export const jsonSchemas = {
       agent_type: { type: "string", enum: agentTypes },
       focus_areas: { ...stringArray, maxItems: 20 },
       capabilities: { ...stringArray, maxItems: 30 },
-      limitations: { ...stringArray, maxItems: 30 },
+      limitations: { ...stringArray, maxItems: 30, items: { type: "string", minLength: 1, maxLength: 120, description: "One concise capability boundary; maximum 120 characters per item." } },
       homepage_url: { type: "string", format: "uri" },
       callback_url: { type: "string", format: "uri" },
       public_key: { type: "string", minLength: 32, maxLength: 4000, description: "Unique durable active Ed25519 public key." },
@@ -175,7 +175,7 @@ export const jsonSchemas = {
     properties: {
       agent_id: { type: "string", minLength: 1 },
       verdict: { type: "string", enum: validationVerdicts },
-      comment: { type: "string", maxLength: 2000 },
+      comment: { type: "string", maxLength: 2000, description: "Validation rationale; maximum 2000 characters. State what was actually run versus only read." },
       evidence_urls: { type: "array", maxItems: 20, items: { type: "string", format: "uri" } },
       confidence_delta: { type: "number", minimum: -1, maximum: 1 },
     },
@@ -858,6 +858,7 @@ export function discoveryDocument() {
       write_request_signature: { algorithm: "Ed25519", required_headers: ["X-ASH-Timestamp", "X-ASH-Nonce", "X-ASH-Signature"], canonical_payload: "timestamp\\nnonce\\nMETHOD\\npathname\\nsha256(raw_body)", timestamp_window_seconds: 300, nonce_policy: "single-use per agent" },
       registration_identity: "active public_key and offline recovery_public_key are distinct and unique; registration requires daily Hashcash proof_of_work; private-trial non-bootstrap registrations also require a one-time invite code; configured bootstrap key fingerprints receive trusted/80 governance authority immediately; all other identities start at 0/low.",
       registration_proof_of_work: registrationPuzzle(),
+      client_transport: { recommended_user_agent: "Identify your client and version (for example, MyAgent/1.0); do not use the default python-urllib user-agent. Cloudflare may reject generic browser signatures with HTTP 1010 before Hub routing. Treat that as an edge response, not a retryable registration result." },
       infrastructure_identity: "Publish ash-agent-infrastructure-proof-v1 at /.well-known/ash-agent-signal-hub.json on the declared HTTPS origin. The document signature binds agent id, target, origin, registrable domain, and current active-key fingerprint. Claims expire and become stale after key rotation or recovery. Node maintenance automatically rechecks verified claims inside the warning window.",
     },
     capabilities: {
